@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordCraft Ultra - Interactive Word Puzzle Hub</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 4s ease-in-out infinite',
+                        'spin-slow': 'spin 12s linear infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes pop {
+            0% { transform: scale(0.7); opacity: 0; }
+            50% { transform: scale(1.12); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+        @keyframes bounce-custom {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+        .animate-pop { animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .animate-shake { animation: shake 0.4s ease-in-out; }
+        .animate-bounce-custom { animation: bounce-custom 0.6s ease-in-out; }
+
+        .tile-flip {
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        .tile-flipped {
+            transform: rotateX(180deg);
+        }
+
+        /* Glassmorphism */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .dark .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(150, 150, 150, 0.3); border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(150, 150, 150, 0.5); }
+    </style>
+</head>
+<body class="h-full bg-slate-900 text-slate-100 font-sans flex flex-col transition-colors duration-500 overflow-x-hidden selection:bg-pink-500 selection:text-white">
+
+    <!-- Canvas for Confetti & Particles -->
+    <canvas id="particle-canvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
+
+    <!-- Header / Navigation bar -->
+    <header class="w-full border-b border-slate-800 bg-slate-900/80 backdrop-blur-xl sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto px-4 h-18 flex items-center justify-between py-3">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-pink-500 via-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-pink-500/20 animate-pulse-slow">
+                    <i class="fa-solid fa-wand-magic-sparkles text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-black text-2xl tracking-tight bg-gradient-to-r from-pink-400 via-purple-300 to-indigo-400 bg-clip-text text-transparent">WordCraft Ultra</h1>
+                    <p class="text-xs text-slate-400 font-medium tracking-wide">Immersive Arcade Word Hub</p>
+                </div>
+            </div>
+
+            <!-- Stats & Profile Pill -->
+            <div class="flex items-center space-x-3">
+                <!-- Level Badge -->
+                <div class="hidden sm:flex items-center space-x-2 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 px-3.5 py-1.5 rounded-full">
+                    <i class="fa-solid fa-award text-indigo-400"></i>
+                    <span class="text-xs font-bold text-indigo-300">Level <span id="player-level">1</span></span>
+                </div>
+                <!-- Streak Badge -->
+                <div class="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/20 px-3.5 py-1.5 rounded-full shadow-lg shadow-amber-500/5">
+                    <i class="fa-solid fa-fire text-amber-500 animate-bounce"></i>
+                    <span id="streak-count" class="text-xs font-black text-amber-400">5</span> <span class="text-xs text-amber-300/80 hidden sm:inline">Streak</span>
+                </div>
+                <!-- Sound Toggle -->
+                <button onclick="toggleAudio()" id="sound-toggle" class="w-10 h-10 rounded-2xl bg-slate-800/80 text-slate-300 flex items-center justify-center hover:bg-slate-700 hover:scale-105 transition shadow-md" aria-label="Toggle Sound">
+                    <i class="fa-solid fa-volume-high text-sm" id="sound-icon"></i>
+                </button>
+                <!-- Theme Toggle -->
+                <button id="theme-toggle" class="w-10 h-10 rounded-2xl bg-slate-800/80 text-slate-300 flex items-center justify-center hover:bg-slate-700 hover:scale-105 transition shadow-md" aria-label="Toggle Theme">
+                    <i class="fa-solid fa-moon dark:hidden"></i>
+                    <i class="fa-solid fa-sun hidden dark:block text-amber-400"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Toast Notification System -->
+    <div id="toast-container" class="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none transition-all duration-300 opacity-0 scale-95">
+        <div id="toast-msg" class="bg-gradient-to-r from-pink-600 to-purple-600 text-white px-6 py-3 rounded-2xl font-bold text-sm shadow-2xl border border-white/20 flex items-center space-x-2">
+            <i class="fa-solid fa-circle-check"></i>
+            <span id="toast-text">Great job!</span>
+        </div>
+    </div>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 flex flex-col">
+        
+        <!-- Mode Selector Bar -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 p-2 bg-slate-800/60 backdrop-blur-md rounded-3xl mb-8 border border-slate-700/50 shadow-2xl">
+            <button onclick="switchMode('wordle')" id="nav-wordle" class="mode-tab py-3.5 px-4 rounded-2xl font-bold text-sm transition-all duration-300 flex items-center justify-center space-x-2.5 bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-lg shadow-pink-600/30 scale-[1.02]">
+                <i class="fa-solid fa-bolt-lightning"></i>
+                <span>Wordle Blitz</span>
+            </button>
+            <button onclick="switchMode('anagram')" id="nav-anagram" class="mode-tab py-3.5 px-4 rounded-2xl font-bold text-sm transition-all duration-300 flex items-center justify-center space-x-2.5 text-slate-400 hover:text-white hover:bg-slate-700/40">
+                <i class="fa-solid fa-tornado"></i>
+                <span>Anagram Vortex</span>
+            </button>
+            <button onclick="switchMode('chain')" id="nav-chain" class="mode-tab py-3.5 px-4 rounded-2xl font-bold text-sm transition-all duration-300 flex items-center justify-center space-x-2.5 text-slate-400 hover:text-white hover:bg-slate-700/40">
+                <i class="fa-solid fa-link"></i>
+                <span>Lexicon Link</span>
+            </button>
+            <button onclick="switchMode('quiz')" id="nav-quiz" class="mode-tab py-3.5 px-4 rounded-2xl font-bold text-sm transition-all duration-300 flex items-center justify-center space-x-2.5 text-slate-400 hover:text-white hover:bg-slate-700/40">
+                <i class="fa-solid fa-brain-circuit"></i>
+                <span>Speed Quiz</span>
+            </button>
+        </div>
+
+        <!-- ================= MODE 1: WORDLE BLITZ ================= -->
+        <div id="mode-wordle" class="flex-1 flex flex-col items-center justify-between pb-6">
+            <div class="w-full flex items-center justify-between mb-4 px-2">
+                <div class="flex items-center space-x-2 text-xs font-semibold text-slate-400">
+                    <i class="fa-solid fa-fire text-pink-500"></i>
+                    <span>Guess the secret 5-letter word</span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span id="wordle-score" class="text-xs font-bold text-purple-400 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">Wins: 0</span>
+                    <button onclick="resetWordle()" class="text-xs font-bold px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-pink-400 transition flex items-center space-x-1 shadow">
+                        <i class="fa-solid fa-rotate"></i>
+                        <span>Reset</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Wordle Grid -->
+            <div id="wordle-grid" class="grid grid-rows-6 gap-2.5 mb-8 w-full max-w-sm aspect-[5/6]"></div>
+
+            <!-- Onscreen Keyboard -->
+            <div id="wordle-keyboard" class="w-full max-w-lg space-y-2">
+                <div class="flex justify-center space-x-1.5">
+                    <button onclick="handleWordleKey('Q')" data-key="Q" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">Q</button>
+                    <button onclick="handleWordleKey('W')" data-key="W" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">W</button>
+                    <button onclick="handleWordleKey('E')" data-key="E" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">E</button>
+                    <button onclick="handleWordleKey('R')" data-key="R" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">R</button>
+                    <button onclick="handleWordleKey('T')" data-key="T" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">T</button>
+                    <button onclick="handleWordleKey('Y')" data-key="Y" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">Y</button>
+                    <button onclick="handleWordleKey('U')" data-key="U" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">U</button>
+                    <button onclick="handleWordleKey('I')" data-key="I" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">I</button>
+                    <button onclick="handleWordleKey('O')" data-key="O" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">O</button>
+                    <button onclick="handleWordleKey('P')" data-key="P" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">P</button>
+                </div>
+                <div class="flex justify-center space-x-1.5 px-4">
+                    <button onclick="handleWordleKey('A')" data-key="A" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">A</button>
+                    <button onclick="handleWordleKey('S')" data-key="S" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">S</button>
+                    <button onclick="handleWordleKey('D')" data-key="D" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">D</button>
+                    <button onclick="handleWordleKey('F')" data-key="F" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">F</button>
+                    <button onclick="handleWordleKey('G')" data-key="G" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">G</button>
+                    <button onclick="handleWordleKey('H')" data-key="H" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">H</button>
+                    <button onclick="handleWordleKey('J')" data-key="J" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">J</button>
+                    <button onclick="handleWordleKey('K')" data-key="K" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">K</button>
+                    <button onclick="handleWordleKey('L')" data-key="L" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">L</button>
+                </div>
+                <div class="flex justify-center space-x-1.5">
+                    <button onclick="handleWordleKey('ENTER')" class="wkey flex-[1.5] h-14 rounded-xl bg-slate-700 font-extrabold text-xs uppercase transition hover:bg-slate-600 flex items-center justify-center shadow">Enter</button>
+                    <button onclick="handleWordleKey('Z')" data-key="Z" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">Z</button>
+                    <button onclick="handleWordleKey('X')" data-key="X" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">X</button>
+                    <button onclick="handleWordleKey('C')" data-key="C" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">C</button>
+                    <button onclick="handleWordleKey('V')" data-key="V" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">V</button>
+                    <button onclick="handleWordleKey('B')" data-key="B" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">B</button>
+                    <button onclick="handleWordleKey('N')" data-key="N" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">N</button>
+                    <button onclick="handleWordleKey('M')" data-key="M" class="wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow">M</button>
+                    <button onclick="handleWordleKey('BACKSPACE')" class="wkey flex-[1.5] h-14 rounded-xl bg-slate-700 font-extrabold text-xs uppercase transition hover:bg-slate-600 flex items-center justify-center shadow"><i class="fa-solid fa-delete-left text-lg"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODE 2: ANAGRAM VORTEX ================= -->
+        <div id="mode-anagram" class="hidden flex-1 flex flex-col items-center justify-center max-w-lg mx-auto w-full">
+            <div class="w-full glass-panel border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+                <div class="absolute -top-12 -right-12 w-40 h-40 bg-pink-500/10 rounded-full blur-2xl"></div>
+                
+                <div class="flex justify-between items-center mb-6">
+                    <span class="text-xs font-black uppercase tracking-wider text-pink-400 bg-pink-500/10 px-3 py-1.5 rounded-full border border-pink-500/20">Anagram Vortex</span>
+                    <div class="flex items-center space-x-3">
+                        <span id="anagram-score" class="text-sm font-black text-slate-200">Score: 0</span>
+                        <button onclick="shuffleAnagramTiles()" class="text-xs text-pink-400 hover:text-pink-300 font-bold bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 transition">
+                            <i class="fa-solid fa-shuffle mr-1"></i> Shuffle
+                        </button>
+                    </div>
+                </div>
+
+                <p id="anagram-clue" class="text-slate-400 text-sm italic mb-6 text-center">Clue: Loading clue...</p>
+
+                <!-- Floating interactive vortex letter tiles -->
+                <div id="anagram-vortex-tiles" class="flex flex-wrap justify-center gap-3 mb-8 min-h-[70px] items-center"></div>
+
+                <!-- Current built answer container -->
+                <div class="mb-6">
+                    <div id="anagram-answer-slot" class="w-full h-16 rounded-2xl bg-slate-800/90 border-2 border-slate-700 flex items-center justify-center space-x-2 text-2xl font-black uppercase tracking-widest text-pink-400 shadow-inner"></div>
+                </div>
+
+                <div class="flex space-x-3">
+                    <button onclick="clearAnagramAnswer()" class="flex-1 py-3.5 px-4 rounded-2xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 transition shadow">
+                        Clear
+                    </button>
+                    <button onclick="submitAnagramAnswer()" class="flex-2 py-3.5 px-6 rounded-2xl font-bold text-sm bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg shadow-pink-600/30 transition">
+                        Submit Word
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODE 3: LEXICON LINK ================= -->
+        <div id="mode-chain" class="hidden flex-1 flex flex-col items-center justify-center max-w-lg mx-auto w-full">
+            <div class="w-full glass-panel border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
+                <div class="flex justify-between items-center mb-6">
+                    <span class="text-xs font-black uppercase tracking-wider text-purple-400 bg-purple-500/10 px-3 py-1.5 rounded-full border border-purple-500/20">Lexicon Link Chain</span>
+                    <div class="flex items-center space-x-3">
+                        <span id="chain-combo" class="text-xs font-black text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20">Combo x1</span>
+                        <span id="chain-score" class="text-sm font-black text-slate-200">Score: 0</span>
+                    </div>
+                </div>
+
+                <div class="text-center mb-6">
+                    <p class="text-xs text-slate-400 mb-1 font-medium">Connect words where the next word starts with the last letter!</p>
+                    <div class="inline-block bg-slate-800/90 border border-slate-700 px-6 py-3 rounded-2xl">
+                        <span class="text-xs text-slate-400 uppercase tracking-widest block font-bold mb-1">Current Word</span>
+                        <span id="chain-current-word" class="text-3xl font-black text-purple-400 uppercase tracking-wider">APPLE</span>
+                    </div>
+                </div>
+
+                <!-- Input box for next word -->
+                <div class="space-y-4">
+                    <div class="relative">
+                        <input type="text" id="chain-input" autocomplete="off" placeholder="Type word starting with last letter..." class="w-full py-4 px-5 text-center text-lg font-bold uppercase tracking-wider rounded-2xl bg-slate-800/90 border-2 border-slate-700 focus:border-purple-500 focus:outline-none transition text-white placeholder-slate-500 shadow-inner">
+                    </div>
+                    <button onclick="submitChainWord()" class="w-full py-4 px-6 rounded-2xl font-bold text-sm bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-600/30 transition">
+                        Link Word <i class="fa-solid fa-arrow-right ml-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODE 4: SPEED QUIZ ================= -->
+        <div id="mode-quiz" class="hidden flex-1 flex flex-col items-center justify-center max-w-lg mx-auto w-full">
+            <div class="w-full glass-panel border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-black uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-3 py-1.5 rounded-full border border-indigo-500/20">Speed Vocab Quiz</span>
+                    <span id="quiz-timer" class="text-sm font-black text-pink-400 bg-pink-500/10 px-3.5 py-1.5 rounded-full border border-pink-500/20 animate-pulse">15s</span>
+                </div>
+
+                <div class="w-full bg-slate-800/80 h-2 rounded-full mb-6 overflow-hidden">
+                    <div id="quiz-progress-bar" class="bg-gradient-to-r from-pink-500 to-purple-500 h-full w-full transition-all duration-1000"></div>
+                </div>
+
+                <div class="text-center mb-6">
+                    <h2 id="quiz-word" class="text-4xl font-black text-white mb-2 tracking-tight">MELANCHOLY</h2>
+                    <p class="text-xs text-slate-400 font-medium">Select the correct definition before time runs out</p>
+                </div>
+
+                <div id="quiz-options" class="space-y-3 mb-6"></div>
+
+                <button id="quiz-next-btn" onclick="nextQuizQuestion()" class="hidden w-full py-3.5 px-4 rounded-2xl font-bold text-sm bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition">
+                    Next Question <i class="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // ================= AUDIO SYNTHESIZER (Web Audio API) =================
+        let soundEnabled = true;
+        let audioCtx = null;
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioCtx;
+        }
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                const ctx = getAudioContext();
+                if (ctx.state === 'suspended') ctx.resume();
+
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                const now = ctx.currentTime;
+
+                if (type === 'pop') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(350, now);
+                    osc.frequency.exponentialRampToValueAtTime(700, now + 0.08);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'success') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.setValueAtTime(554.37, now + 0.1);
+                    osc.frequency.setValueAtTime(659.25, now + 0.2);
+                    osc.frequency.setValueAtTime(880, now + 0.3);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                    osc.start(now);
+                    osc.stop(now + 0.5);
+                } else if (type === 'error') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(200, now);
+                    osc.frequency.setValueAtTime(130, now + 0.15);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                } else if (type === 'whoosh') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(150, now);
+                    osc.frequency.exponentialRampToValueAtTime(600, now + 0.2);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function toggleAudio() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('sound-icon');
+            icon.className = soundEnabled ? 'fa-solid fa-volume-high text-sm' : 'fa-solid fa-volume-xmark text-sm text-rose-400';
+            showToast(soundEnabled ? "Sound Effects ON" : "Sound Effects MUTED");
+        }
+
+        // ================= THEME TOGGLE =================
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const htmlEl = document.documentElement;
+        themeToggleBtn.addEventListener('click', () => {
+            if (htmlEl.classList.contains('dark')) {
+                htmlEl.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                htmlEl.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            playSound('pop');
+        });
+        if (localStorage.getItem('theme') === 'light') {
+            htmlEl.classList.remove('dark');
+        } else {
+            htmlEl.classList.add('dark');
+        }
+
+        // ================= PARTICLE & CONFETTI ENGINE =================
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function spawnConfetti() {
+            for (let i = 0; i < 70; i++) {
+                particles.push({
+                    x: window.innerWidth / 2,
+                    y: window.innerHeight / 2,
+                    vx: (Math.random() - 0.5) * 16,
+                    vy: (Math.random() - 0.7) * 16,
+                    size: Math.random() * 8 + 4,
+                    color: ['#ec4899', '#8b5cf6', '#6366f1', '#f59e0b', '#10b981'][Math.floor(Math.random() * 5)],
+                    alpha: 1,
+                    decay: Math.random() * 0.02 + 0.01
+                });
+            }
+        }
+
+        function updateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.4; // gravity
+                p.alpha -= p.decay;
+                if (p.alpha <= 0) {
+                    particles.splice(index, 1);
+                    return;
+                }
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+            requestAnimationFrame(updateParticles);
+        }
+        updateParticles();
+
+        // ================= TOAST NOTIFICATION =================
+        function showToast(text, isSuccess = true) {
+            const container = document.getElementById('toast-container');
+            const msgText = document.getElementById('toast-text');
+            msgText.innerText = text;
+            container.classList.remove('opacity-0', 'scale-95');
+            container.classList.add('opacity-100', 'scale-100');
+            setTimeout(() => {
+                container.classList.remove('opacity-100', 'scale-100');
+                container.classList.add('opacity-0', 'scale-95');
+            }, 2500);
+        }
+
+        // ================= MODE NAVIGATION =================
+        function switchMode(mode) {
+            ['wordle', 'anagram', 'chain', 'quiz'].forEach(m => {
+                document.getElementById(`mode-${m}`).classList.add('hidden');
+                document.getElementById(`nav-${m}`).className = "mode-tab py-3.5 px-4 rounded-2xl font-bold text-sm transition-all duration-300 flex items-center justify-center space-x-2.5 text-slate-400 hover:text-white hover:bg-slate-700/40";
+            });
+            document.getElementById(`mode-${mode}`).classList.remove('hidden');
+            const activeNav = document.getElementById(`nav-${mode}`);
+            activeNav.className = "mode-tab py-3.5 px-4 rounded-2xl font-bold text-sm transition-all duration-300 flex items-center justify-center space-x-2.5 bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-lg shadow-pink-600/30 scale-[1.02]";
+            playSound('whoosh');
+        }
+
+        // ================= MODE 1: WORDLE BLITZ LOGIC =================
+        const WORDS = ["APPLE", "BEACH", "CHAIR", "DANCE", "EAGLE", "FLAME", "GRAPE", "HOUSE", "IMAGE", "JUICE", "KNIFE", "LEMON", "MUSIC", "NIGHT", "OCEAN", "PIANO", "QUEEN", "RIVER", "SMILE", "TIGER", "UNITY", "VOICE", "WATER", "YOUTH", "ZEBRA"];
+        let wordleTarget = WORDS[Math.floor(Math.random() * WORDS.length)];
+        let wordleGuesses = Array(6).fill("");
+        let currentWordleRow = 0;
+        let isWordleOver = false;
+        let wordleWins = 0;
+
+        const wordleGrid = document.getElementById('wordle-grid');
+        function initWordleGrid() {
+            wordleGrid.innerHTML = '';
+            for (let r = 0; r < 6; r++) {
+                const row = document.createElement('div');
+                row.className = 'grid grid-cols-5 gap-2.5';
+                for (let c = 0; c < 5; c++) {
+                    const tile = document.createElement('div');
+                    tile.id = `w-tile-${r}-${c}`;
+                    tile.className = 'w-full h-full rounded-2xl border-2 border-slate-700 bg-slate-800/90 flex items-center justify-center font-black text-2xl uppercase text-white shadow-inner transition-all duration-300';
+                    row.appendChild(tile);
+                }
+                wordleGrid.appendChild(row);
+            }
+        }
+
+        function resetWordle() {
+            wordleTarget = WORDS[Math.floor(Math.random() * WORDS.length)];
+            wordleGuesses = Array(6).fill("");
+            currentWordleRow = 0;
+            isWordleOver = false;
+            initWordleGrid();
+            document.querySelectorAll('.wkey').forEach(btn => {
+                btn.className = 'wkey flex-1 h-14 rounded-xl bg-slate-800 font-extrabold text-sm uppercase transition hover:bg-slate-700 active:scale-95 shadow text-white';
+            });
+            showToast("New Wordle Blitz loaded!");
+        }
+
+        function handleWordleKey(key) {
+            if (isWordleOver) return;
+            const currentGuess = wordleGuesses[currentWordleRow];
+
+            if (key === 'BACKSPACE') {
+                if (currentGuess.length > 0) {
+                    wordleGuesses[currentWordleRow] = currentGuess.slice(0, -1);
+                    updateWordleRow();
+                    playSound('pop');
+                }
+                return;
+            }
+
+            if (key === 'ENTER') {
+                if (currentGuess.length < 5) {
+                    showToast("Not enough letters!", false);
+                    playSound('error');
+                    return;
+                }
+                evaluateWordleGuess();
+                return;
+            }
+
+            if (currentGuess.length < 5 && /^[A-Z]$/.test(key)) {
+                wordleGuesses[currentWordleRow] += key;
+                updateWordleRow();
+                playSound('pop');
+            }
+        }
+
+        function updateWordleRow() {
+            const guess = wordleGuesses[currentWordleRow];
+            for (let c = 0; c < 5; c++) {
+                const tile = document.getElementById(`w-tile-${currentWordleRow}-${c}`);
+                tile.innerText = guess[c] || "";
+                if (guess[c]) {
+                    tile.classList.add('animate-pop');
+                    setTimeout(() => tile.classList.remove('animate-pop'), 250);
+                }
+            }
+        }
+
+        function evaluateWordleGuess() {
+            const guess = wordleGuesses[currentWordleRow];
+            const targetChars = wordleTarget.split('');
+            const guessChars = guess.split('');
+            const statuses = Array(5).fill('absent');
+
+            for (let i = 0; i < 5; i++) {
+                if (guessChars[i] === targetChars[i]) {
+                    statuses[i] = 'correct';
+                    targetChars[i] = null;
+                    guessChars[i] = null;
+                }
+            }
+
+            for (let i = 0; i < 5; i++) {
+                if (guessChars[i] !== null) {
+                    const idx = targetChars.indexOf(guessChars[i]);
+                    if (idx !== -1) {
+                        statuses[i] = 'present';
+                        targetChars[idx] = null;
+                    }
+                }
+            }
+
+            for (let i = 0; i < 5; i++) {
+                const tile = document.getElementById(`w-tile-${currentWordleRow}-${i}`);
+                const letter = guess[i];
+                const keyBtn = document.querySelector(`[data-key="${letter}"]`);
+
+                setTimeout(() => {
+                    tile.classList.add('tile-flip');
+                    if (statuses[i] === 'correct') {
+                        tile.className = 'w-full h-full rounded-2xl border-2 border-emerald-500 bg-emerald-500 text-white flex items-center justify-center font-black text-2xl uppercase tile-flip tile-flipped shadow-lg shadow-emerald-500/20';
+                        if (keyBtn) keyBtn.className = 'wkey flex-1 h-14 rounded-xl bg-emerald-500 text-white font-extrabold text-sm uppercase transition shadow';
+                    } else if (statuses[i] === 'present') {
+                        tile.className = 'w-full h-full rounded-2xl border-2 border-amber-500 bg-amber-500 text-white flex items-center justify-center font-black text-2xl uppercase tile-flip tile-flipped shadow-lg shadow-amber-500/20';
+                        if (keyBtn && !keyBtn.classList.contains('bg-emerald-500')) {
+                            keyBtn.className = 'wkey flex-1 h-14 rounded-xl bg-amber-500 text-white font-extrabold text-sm uppercase transition shadow';
+                        }
+                    } else {
+                        tile.className = 'w-full h-full rounded-2xl border-2 border-slate-700 bg-slate-700 text-white flex items-center justify-center font-black text-2xl uppercase tile-flip tile-flipped';
+                        if (keyBtn && !keyBtn.classList.contains('bg-emerald-500') && !keyBtn.classList.contains('bg-amber-500')) {
+                            keyBtn.className = 'wkey flex-1 h-14 rounded-xl bg-slate-800 text-slate-400 font-extrabold text-sm uppercase transition opacity-50 shadow';
+                        }
+                    }
+                }, i * 100);
+            }
+
+            if (guess === wordleTarget) {
+                isWordleOver = true;
+                wordleWins++;
+                document.getElementById('wordle-score').innerText = `Wins: ${wordleWins}`;
+                playSound('success');
+                spawnConfetti();
+                setTimeout(() => showToast("Incredible! Wordle Solved!"), 600);
+                return;
+            }
+
+            currentWordleRow++;
+            if (currentWordleRow === 6) {
+                isWordleOver = true;
+                playSound('error');
+                setTimeout(() => showToast(`Game Over! Word was ${wordleTarget}`, false), 600);
+            }
+        }
+        initWordleGrid();
+
+        // ================= MODE 2: ANAGRAM VORTEX LOGIC =================
+        const ANAGRAMS = [
+            { word: "PLANET", clue: "A celestial body orbiting a star" },
+            { word: "GUITAR", clue: "A stringed musical instrument" },
+            { word: "BRIDGE", clue: "A structure carrying a road across an obstacle" },
+            { word: "CASTLE", clue: "A large medieval fortress" },
+            { word: "FOREST", clue: "A large area covered chiefly with trees" }
+        ];
+        let currentAnagramIdx = 0;
+        let anagramScore = 0;
+        let selectedAnagramLetters = [];
+        let availableAnagramTiles = [];
+
+        function loadAnagram() {
+            const data = ANAGRAMS[currentAnagramIdx % ANAGRAMS.length];
+            document.getElementById('anagram-clue').innerText = `Clue: ${data.clue}`;
+            selectedAnagramLetters = [];
+            availableAnagramTiles = data.word.split('').sort(() => Math.random() - 0.5);
+            renderAnagramVortex();
+        }
+
+        function renderAnagramVortex() {
+            const tilesContainer = document.getElementById('anagram-vortex-tiles');
+            tilesContainer.innerHTML = '';
+            availableAnagramTiles.forEach((letter, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-12 h-12 rounded-2xl bg-slate-800 border-2 border-slate-700 text-pink-400 font-black text-lg flex items-center justify-center shadow-lg hover:border-pink-500 hover:scale-105 transition active:scale-95 animate-float';
+                btn.style.animationDelay = `${idx * 0.1}s`;
+                btn.innerText = letter;
+                btn.onclick = () => selectAnagramTile(letter, idx);
+                tilesContainer.appendChild(btn);
+            });
+
+            const slot = document.getElementById('anagram-answer-slot');
+            slot.innerHTML = selectedAnagramLetters.length === 0 ? '<span class="text-xs text-slate-500 font-medium">Click letters to build word</span>' : selectedAnagramLetters.join(' ');
+        }
+
+        function selectAnagramTile(letter, idx) {
+            playSound('pop');
+            availableAnagramTiles.splice(idx, 1);
+            selectedAnagramLetters.push(letter);
+            renderAnagramVortex();
+        }
+
+        function clearAnagramAnswer() {
+            playSound('pop');
+            const data = ANAGRAMS[currentAnagramIdx % ANAGRAMS.length];
+            availableAnagramTiles = data.word.split('').sort(() => Math.random() - 0.5);
+            selectedAnagramLetters = [];
+            renderAnagramVortex();
+        }
+
+        function shuffleAnagramTiles() {
+            playSound('whoosh');
+            availableAnagramTiles.sort(() => Math.random() - 0.5);
+            renderAnagramVortex();
+        }
+
+        function submitAnagramAnswer() {
+            const ans = selectedAnagramLetters.join('');
+            const correct = ANAGRAMS[currentAnagramIdx % ANAGRAMS.length].word;
+            if (ans === correct) {
+                anagramScore += 15;
+                document.getElementById('anagram-score').innerText = `Score: ${anagramScore}`;
+                playSound('success');
+                spawnConfetti();
+                showToast("Vortex Solved! +15 pts");
+                currentAnagramIdx++;
+                loadAnagram();
+            } else {
+                playSound('error');
+                showToast("Incorrect word combination!", false);
+            }
+        }
+        loadAnagram();
+
+        // ================= MODE 3: LEXICON LINK LOGIC =================
+        let currentChainWord = "APPLE";
+        let chainScore = 0;
+        let chainCombo = 1;
+
+        function submitChainWord() {
+            const inputEl = document.getElementById('chain-input');
+            const val = inputEl.value.trim().toUpperCase();
+            if (!val || val.length < 3) {
+                showToast("Please enter a valid word!", false);
+                playSound('error');
+                return;
+            }
+
+            const expectedLetter = currentChainWord.slice(-1);
+            if (val[0] !== expectedLetter) {
+                showToast(`Word must start with '${expectedLetter}'!`, false);
+                playSound('error');
+                chainCombo = 1;
+                document.getElementById('chain-combo').innerText = `Combo x${chainCombo}`;
+                return;
+            }
+
+            playSound('success');
+            spawnConfetti();
+            chainScore += 10 * chainCombo;
+            chainCombo++;
+            document.getElementById('chain-score').innerText = `Score: ${chainScore}`;
+            document.getElementById('chain-combo').innerText = `Combo x${chainCombo}`;
+            currentChainWord = val;
+            document.getElementById('chain-current-word').innerText = currentChainWord;
+            inputEl.value = '';
+            showToast(`Linked! +${10 * (chainCombo - 1)} pts`);
+        }
+
+        // ================= MODE 4: SPEED QUIZ LOGIC =================
+        const QUIZ = [
+            { word: "EPHEMERAL", options: ["Lasting a very short time", "Extremely powerful", "Deeply sorrowful", "Quiet and modest"], correct: 0 },
+            { word: "SERENDIPITY", options: ["A state of confusion", "Finding valuable things by chance", "A delay in plans", "Inner peace"], correct: 1 },
+            { word: "PRAGMATIC", options: ["Deeply emotional", "Dealing with things sensibly", "Prone to mood swings", "Excessively loud"], correct: 1 },
+            { word: "BENEVOLENT", options: ["Showing hostility", "Secretive and dark", "Well-meaning and kindly", "Stubborn"], correct: 2 },
+            { word: "LUMINOUS", options: ["Heavy and cumbersome", "Emitting bright light", "Moving slowly", "Harsh sounding"], correct: 1 }
+        ];
+        let quizIdx = 0;
+        let quizTimer = 15;
+        let quizInterval = null;
+        let quizScore = 0;
+        let quizAnswered = false;
+
+        function startQuiz() {
+            quizAnswered = false;
+            quizTimer = 15;
+            const q = QUIZ[quizIdx % QUIZ.length];
+            document.getElementById('quiz-word').innerText = q.word;
+            document.getElementById('quiz-next-btn').classList.add('hidden');
+            
+            const optionsContainer = document.getElementById('quiz-options');
+            optionsContainer.innerHTML = '';
+
+            q.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full py-4 px-5 rounded-2xl font-bold text-sm text-left bg-slate-800/90 text-slate-200 border border-slate-700 hover:bg-slate-700 transition flex items-center justify-between shadow';
+                btn.innerHTML = `<span>${opt}</span><i class="fa-solid fa-chevron-right text-xs opacity-50"></i>`;
+                btn.onclick = () => selectQuizOption(idx, btn);
+                optionsContainer.appendChild(btn);
+            });
+
+            clearInterval(quizInterval);
+            quizInterval = setInterval(() => {
+                quizTimer--;
+                document.getElementById('quiz-timer').innerText = `${quizTimer}s`;
+                document.getElementById('quiz-progress-bar').style.width = `${(quizTimer / 15) * 100}%`;
+                if (quizTimer <= 0) {
+                    clearInterval(quizInterval);
+                    if (!quizAnswered) {
+                        quizAnswered = true;
+                        playSound('error');
+                        showToast("Time's up!", false);
+                        document.getElementById('quiz-next-btn').classList.remove('hidden');
+                    }
+                }
+            }, 1000);
+        }
+
+        function selectQuizOption(selectedIdx, btnEl) {
+            if (quizAnswered) return;
+            quizAnswered = true;
+            clearInterval(quizInterval);
+
+            const q = QUIZ[quizIdx % QUIZ.length];
+            const options = document.getElementById('quiz-options').children;
+
+            if (selectedIdx === q.correct) {
+                btnEl.className = 'w-full py-4 px-5 rounded-2xl font-bold text-sm text-left bg-emerald-500 text-white flex items-center justify-between shadow-lg shadow-emerald-500/20';
+                playSound('success');
+                spawnConfetti();
+                quizScore += 20;
+                showToast("Correct! +20 pts");
+            } else {
+                btnEl.className = 'w-full py-4 px-5 rounded-2xl font-bold text-sm text-left bg-rose-500 text-white flex items-center justify-between shadow-lg shadow-rose-500/20';
+                options[q.correct].className = 'w-full py-4 px-5 rounded-2xl font-bold text-sm text-left bg-emerald-500 text-white flex items-center justify-between shadow-lg shadow-emerald-500/20';
+                playSound('error');
+                showToast("Incorrect definition!", false);
+            }
+            document.getElementById('quiz-next-btn').classList.remove('hidden');
+        }
+
+        function nextQuizQuestion() {
+            quizIdx++;
+            startQuiz();
+            playSound('whoosh');
+        }
+        startQuiz();
+    </script>
+</body>
+</html>
